@@ -1,0 +1,1 @@
+Google uses inverted index.

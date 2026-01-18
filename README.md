@@ -70,23 +70,29 @@ Search documents containing given words.
 ./localsearch search "google inverted index"
 ```
 
-Results are ranked using **TF-IDF**.
+Results are ranked using **TF-IDF** (Term Frequency-Inverse Document Frequency).
+- **TF** (Term Frequency): Calculated as term count divided by document length
+- **IDF** (Inverse Document Frequency): Calculated as log(total_docs / document_frequency)
+- Results are sorted in descending order by score
 
 ### 2️⃣ Phrase Search
 
-Search documents containing exact word sequences.
+Search documents containing exact word sequences (minimum 2 words required).
 
 ```bash
 ./localsearch phrase "inverted index"
 ```
 
-Uses **positional inverted indexing** to ensure adjacency.
+Uses **positional inverted indexing** to ensure word adjacency:
+- Records the position of each term in every document
+- Verifies that subsequent words appear at consecutive positions
+- Returns matching documents with their file paths
 
 ### 3️⃣ Index Persistence
 
 - Index is built **once**
-- Stored as **flat files**
-- Reloaded **instantly** for future searches
+- Stored as **flat files** in human-readable format
+- Reloaded **instantly** for future searches without re-indexing
 
 ---
 
@@ -94,13 +100,29 @@ Uses **positional inverted indexing** to ensure adjacency.
 
 ### Requirements
 
-- C++17 compatible compiler
-- MinGW / g++ (Windows, Linux, WSL)
+- C++17 compatible compiler (g++, clang, MSVC)
+- MinGW / g++ recommended (Windows, Linux, WSL)
+- Standard C++ library (STL)
 
 ### Compile
 
 ```bash
 g++ -std=c++17 \
+src/main.cpp \
+src/utils/TextUtils.cpp \
+src/crawler/FileCrawler.cpp \
+src/indexer/DocumentStore.cpp \
+src/indexer/InvertedIndex.cpp \
+src/indexer/PositionalInvertedIndex.cpp \
+src/search/TFIDFSearch.cpp \
+src/search/PhraseSearch.cpp \
+-o localsearch
+```
+
+Or compile with optimization flags:
+
+```bash
+g++ -std=c++17 -O2 \
 src/main.cpp \
 src/utils/TextUtils.cpp \
 src/crawler/FileCrawler.cpp \
@@ -118,7 +140,7 @@ src/search/PhraseSearch.cpp \
 
 ### 1️⃣ Build the Index
 
-Indexes all `.txt` files inside a directory.
+Indexes all `.txt` files inside a directory recursively.
 
 ```bash
 ./localsearch index data/docs
@@ -129,7 +151,15 @@ Indexes all `.txt` files inside a directory.
 Index built successfully
 ```
 
+**Process:**
+1. Crawls directory for `.txt` files
+2. Tokenizes each file with stopword removal
+3. Builds inverted and positional indices
+4. Saves three index files: `docs.meta`, `inverted.idx`, `positional.idx`
+
 ### 2️⃣ Keyword Search (TF-IDF Ranked)
+
+Search for documents using one or more keywords.
 
 ```bash
 ./localsearch search "google inverted index"
@@ -137,10 +167,20 @@ Index built successfully
 
 **Example output:**
 ```
+--- TF-IDF RESULTS ---
 DocID: 1 | Score: 0.6931
+DocID: 3 | Score: 0.4055
 ```
 
+**How it works:**
+- Query terms are tokenized without stopword filtering
+- For each term, retrieves document frequency and term frequency per document
+- Calculates TF-IDF score: (term_count / doc_length) × log(total_docs / doc_frequency)
+- Results sorted by score in descending order
+
 ### 3️⃣ Phrase Search
+
+Search for documents containing an exact sequence of words (minimum 2 words).
 
 ```bash
 ./localsearch phrase "inverted index"
@@ -148,8 +188,43 @@ DocID: 1 | Score: 0.6931
 
 **Example output:**
 ```
+--- PHRASE SEARCH RESULTS ---
 DocID: 1 | Path: data/docs/sub/b.txt
 ```
+
+**How it works:**
+- Tokenizes the phrase without stopword filtering
+- Finds all documents containing the first word
+- For subsequent words, verifies they appear at consecutive positions
+- Returns matching documents with their file paths
+
+---
+
+## � Core Components
+
+### File Crawler (`src/crawler/`)
+- **FileCrawler**: Recursively discovers `.txt` files from a specified directory
+- Returns a list of file paths for indexing
+
+### Text Processing (`src/utils/`)
+- **TextUtils**: Handles tokenization, lowercasing, and stopword removal
+- Built-in stopwords: "the", "is", "and", "a", "of"
+
+### Indexing (`src/indexer/`)
+- **DocumentStore**: Manages document metadata and lookup
+- **InvertedIndex**: Maps terms to documents and frequencies (for TF-IDF)
+- **PositionalInvertedIndex**: Maps terms to document-position pairs (for phrase search)
+
+### Search & Ranking (`src/search/`)
+- **TFIDFSearch**: Keyword search with TF-IDF ranking
+  - Tokenizes query without stopword filtering
+  - Calculates scores using TF × IDF formula
+  - Returns results sorted by relevance score
+  
+- **PhraseSearch**: Exact phrase matching
+  - Requires minimum 2-word phrases
+  - Validates positional adjacency across all terms
+  - Returns matching documents with file paths
 
 ---
 
@@ -159,16 +234,19 @@ DocID: 1 | Path: data/docs/sub/b.txt
 ```
 docId|filePath|tokenCount
 ```
+Stores metadata for each indexed document including the document ID, file path, and token count (document length).
 
 ### `inverted.idx`
 ```
 term|docId:frequency,docId:frequency
 ```
+Maps each term to documents containing it with their term frequencies. Used for keyword search and TF-IDF ranking.
 
 ### `positional.idx`
 ```
 term|docId:pos,pos;docId:pos,pos
 ```
+Maps each term to its positions within each document. Used for phrase search to verify word adjacency.
 
 These formats are human-readable and easy to extend.
 
@@ -178,11 +256,26 @@ These formats are human-readable and easy to extend.
 
 | Aspect | Details |
 |--------|---------|
-| **Time Complexity** | Keyword lookup: O(1) average<br>Phrase search: positional matching |
-| **Data Structures** | Hash maps, vectors, positional lists |
-| **Ranking Algorithm** | TF-IDF (Term Frequency × Inverse Document Frequency) |
-| **Design** | Modular, extensible, CLI-based |
-| **Language** | C++ (STL, file I/O, memory-safe design) |
+| **Time Complexity** | Index building: O(N × M) where N = files, M = avg tokens/file<br>Keyword lookup: O(K) where K = query terms<br>Phrase search: O(D × P) where D = docs, P = avg positions/term |
+| **Space Complexity** | O(V × D) where V = unique terms, D = documents |
+| **Data Structures** | `std::unordered_map` for term/doc mappings<br>`std::vector` for position tracking<br>Hash-based lookup for O(1) average access |
+| **Index Format** | Pipe-delimited flat files (human-readable)<br>Easy to parse and extend |
+| **Ranking Algorithm** | TF-IDF: (term_freq / doc_length) × log(total_docs / doc_freq) |
+| **Tokenization** | Lowercasing, whitespace/punctuation splitting, stopword removal |
+| **Design** | Modular, single-responsibility per class<br>Separation of indexing and querying<br>CLI-based interface |
+| **Language** | C++17 with STL<br>Standard file I/O<br>No external dependencies |
+
+---
+
+## 📝 Stopwords
+
+The following common words are removed during tokenization to reduce index size and improve relevance:
+
+```
+the, is, and, a, of
+```
+
+**Note:** These stopwords are currently hardcoded in [src/main.cpp](src/main.cpp#L14-L18). For custom stopwords, consider loading from the `data/stopwords.txt` file.
 
 ---
 
@@ -201,11 +294,16 @@ It demonstrates **systems thinking**, not just application logic.
 
 ## 🔮 Possible Extensions
 
-- Multithreaded indexing
-- Top-K result optimization using heaps
-- Index compression
-- Support for more file formats
-- Incremental index updates
+- **Multithreaded Indexing** – Parallelize file crawling and tokenization
+- **Top-K Results** – Use heaps for efficient limit-K retrieval instead of sorting all results
+- **Index Compression** – Implement variable-length encoding or delta compression for flat files
+- **Additional File Formats** – Support `.pdf`, `.docx`, `.md` in addition to `.txt`
+- **Incremental Updates** – Add/remove documents without full re-indexing
+- **Advanced Tokenization** – Stemming, lemmatization, n-grams
+- **Boolean Queries** – AND, OR, NOT operators for complex searches
+- **Wildcard Search** – Support queries like "test*" or "test?"
+- **Fuzzy Matching** – Spell-correction and approximate string matching
+- **Web Crawler** – Index web pages instead of local files
 
 ---
 

@@ -1,0 +1,5 @@
+This project is a local document search engine built in C plus plus.
+It supports keyword search and phrase search using positional inverted index.
+The index is saved to disk so future searches do not require re indexing.
+Fast startup is possible by loading docs meta inverted idx and positional idx.
+Exact phrase search is useful for matching sequences like inverted index.

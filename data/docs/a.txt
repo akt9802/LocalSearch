@@ -1,1 +1,5 @@
-Search engines are powerful.
+Google uses an inverted index to power fast keyword search.
+An inverted index maps each word to the documents where it appears.
+A positional index stores the position of each word inside a document.
+Phrase search like inverted index works using consecutive word positions.
+TF IDF ranking helps sort results by relevance.

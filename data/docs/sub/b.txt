@@ -1,1 +1,5 @@
-Google uses inverted index.
+TF IDF is a ranking algorithm used in many search engines.
+TF means term frequency which is how often a word appears in a document.
+IDF means inverse document frequency which reduces the score of common words.
+Tokenization includes lowercasing and removing punctuation.
+Stopword removal helps reduce index size and improves search quality.
